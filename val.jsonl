@@ -1,0 +1,4 @@
+{"input": "Completely unusable out of the box", "additional_context": {}, "answer": "complaint"}
+{"input": "Exactly what I was looking for", "additional_context": {}, "answer": "not_complaint"}
+{"input": "Nobody has responded to my ticket", "additional_context": {}, "answer": "complaint"}
+{"input": "Solid build quality, very happy", "additional_context": {}, "answer": "not_complaint"}

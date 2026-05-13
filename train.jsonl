@@ -1,0 +1,8 @@
+{"input": "This product broke after one day", "additional_context": {}, "answer": "complaint"}
+{"input": "I love how fast the shipping was", "additional_context": {}, "answer": "not_complaint"}
+{"input": "The support team ignored my emails", "additional_context": {}, "answer": "complaint"}
+{"input": "Works exactly as advertised", "additional_context": {}, "answer": "not_complaint"}
+{"input": "I want a refund immediately", "additional_context": {}, "answer": "complaint"}
+{"input": "Great value for the price", "additional_context": {}, "answer": "not_complaint"}
+{"input": "This is the third time it has broken", "additional_context": {}, "answer": "complaint"}
+{"input": "Arrived early and well packaged", "additional_context": {}, "answer": "not_complaint"}
