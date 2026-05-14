@@ -19,41 +19,56 @@ Built with Marp. Render with:
 marp --html slides.md
 ```
 
+For portable output (images embedded):
+```bash
+marp --html --allow-local-files slides.md -o slides.pdf
+marp --html --allow-local-files slides.md -o slides.pptx
+```
+
+Note: Marp HTML does NOT embed images — it uses relative paths. Keep `assets/` alongside `slides.html` if presenting from HTML. There is no `--self-contained` HTML option.
+
+Note: Marp does NOT support Mermaid diagrams natively — use ASCII art in code blocks instead. Also, `---` inside code blocks gets parsed as a slide break — use `- - -` as a workaround.
+
 ### Current slide order
-1. Title: Stop Writing Prompts by Hand
+1. Title + GEPA paper image (`assets/GEPA.png`)
 2. How we write prompts today (the vibes problem)
 3. The prerequisite: evals (objective vs subjective)
 4. Once you have an eval, you can optimize
-5. Glossary: paper speak → plain English
-6. Why not just ask ChatGPT?
-7. The two-model architecture (task LM vs reflection LM)
-8. What the Pareto frontier is (with checkmark table)
-9. How GEPA runs, step by step (Mermaid flowchart)
-10. Two datasets, two jobs (train vs val)
-11. What a single mutation looks like (8-step walkthrough)
+5. Why not just ask Claude?
+6. GEPA architecture (`assets/GEPA-arch.png`)
+7. Glossary: paper speak → plain English
+8. What a single mutation looks like (8-step walkthrough)
+9. The two-model architecture (task LM vs reflection LM)
+10. What the Pareto frontier is (with checkmark table)
+11. Two datasets, two jobs (train vs val)
 12. Why only 3 examples at a time (minibatch rationale)
-13. Mutation is directed, not random (vs genetic algorithms)
-14. What the reflection LM actually sees (concrete complaint example)
-15. What you get at the end (before/after prompt)
-16. Real results from the paper (table)
-17. GEPA vs reinforcement learning (GRPO comparison table)
-18. When GEPA won't help (limits)
-19. The practical takeaway (5 bullets)
-20. Questions + links
+13. What the reflection LM actually sees (concrete complaint example)
+14. What you get at the end (`assets/example-prompt.png`)
+15. When GEPA won't help (limits)
+16. The practical takeaway (5 bullets)
+17. Questions + links
+
+### Commented-out slides (available to restore)
+- What the paper actually tested on (HotpotQA, HoVer, IFBench, PUPA benchmark table)
+- Real results from the paper (improvement numbers table)
+- GEPA vs reinforcement learning (GRPO comparison table)
 
 ### Key design decisions
 - Complaint classification used as the running example throughout (not AIME or academic tasks)
-- Pareto frontier explained via checkmark table, not math
-- "Senior colleague doing a code review" analogy for mutation
+- Pareto frontier explained via checkmark table, not math. Definition: "you can't improve one thing without making another worse." Frontier = set of prompts where that's true.
+- Named after Vilfredo Pareto (economist, trade-offs). Same person as 80-20 rule but unrelated concept.
 - Mutation is directed not random — this distinction is load-bearing for the whole talk
 - Merge mechanism intentionally omitted from slides (too much detail for this audience)
+- "Mutation is directed, not random" slide was removed — covered implicitly by the reflection LM slides
 
 ### Things NOT in the slides (intentionally)
-- The merge mechanism (algorithmic, complex, not essential for audience)
+- The merge mechanism (algorithmic, no LLM call — combines two specialist candidates into one generalist using component-level git-merge-style logic. Only useful with multi-component prompts.)
 - System-aware merge LLM vs no-LLM distinction
 - frontier_type parameter options
 - The family tree / fan-out mechanics
 - Anything about implementing a custom GEPAAdapter
+- How parents get discarded (passive — Pareto filtering drops a prompt only when another dominates it on ALL val examples, not eagerly)
+- Final prompt selection (highest average val score — frontier is a search strategy, not a final selection strategy)
 
 ## Concepts to Have Ready for Q&A
 
@@ -74,6 +89,9 @@ Use an LLM as judge in the evaluator. The judge returns a score and feedback, GE
 
 **"Why is it called Genetic-Pareto?"**
 Genetic = evolutionary analogy (mutation, selection). Pareto = keeps candidates that are best at something, not just the global best. Both are slightly misleading names but they're what the paper uses.
+
+**"Is this the same Pareto as the 80-20 rule?"**
+Same person (Vilfredo Pareto, Italian economist), different idea. 80-20 is about unequal distributions. Pareto optimality is about trade-offs where you can't improve one thing without worsening another. Unrelated concepts.
 
 ## Blog Post (in progress)
 

@@ -3,3 +3,4 @@ gepa/
 slides.html
 __pycache__/
 .env
+.DS_Store

@@ -14,8 +14,9 @@ style: |
   blockquote { border-left: 4px solid #e94560; color: #555; font-style: italic; }
 ---
 
-# Stop Writing Prompts by Hand
 ## How automated prompt optimization works — and why it matters
+
+![w:900](assets/GEPA.png)
 
 ---
 
@@ -40,12 +41,14 @@ An **eval** is just: given an input, does my system produce a good output?
 
 **Objective evals**
 Clear right/wrong answer
+
 - Did the model extract the correct date?
 - Is the JSON valid?
 - Does the answer match the expected value?
 
 **Subjective evals**
 Judgment call
+
 - Is this draft better than that draft?
 - Does this tone feel appropriate?
 - Is this summary accurate enough?
@@ -70,33 +73,59 @@ You write the eval. GEPA handles the search.
 
 ---
 
-## Glossary: paper speak → plain English
+## Why not just ask Claude to improve your prompt?
 
-| Paper term | What it actually means |
-|---|---|
-| **Candidate** | A version of your prompt |
-| **Mutation** | A rewrite of the prompt based on failure analysis |
-| **Trainset / Valset** | Examples to learn from / examples to test generalization |
-| **Reflection LM** | The smart model that reads failures and proposes fixes |
-| **Task LM** | The model that actually runs your task |
-| **Component / Module** | A single text parameter being optimized (usually just: your prompt) |
-| **Trajectory** | A record of what happened when a prompt ran: input, output, feedback |
-| **ASI** | Actionable Side Information — the *why* behind a failure |
+You could paste your prompt into Claude and say "make this better." Here's what's different:
+
+|                | Vibes-based rewrite         | GEPA                              |
+| -------------- | --------------------------- | --------------------------------- |
+| **Data**       | Works from your description | Runs against your actual examples |
+| **Failures**   | Guesses what might go wrong | Reads exact failure traces        |
+| **Validation** | You eyeball it              | Scores against held-out eval set  |
+| **Iterations** | One shot                    | Hundreds of targeted improvements |
+
+GEPA isn't smarter than a good LLM. It's **systematic** where manual iteration is not.
 
 ---
 
-## Why not just ask ChatGPT to improve your prompt?
+## GEPA architecture
 
-You could paste your prompt into ChatGPT and say "make this better." Here's what's different:
+![w:900](assets/GEPA-arch.png)
 
-| | Vibes-based rewrite | GEPA |
-|---|---|---|
-| **Data** | Works from your description | Runs against your actual examples |
-| **Failures** | Guesses what might go wrong | Reads exact failure traces |
-| **Validation** | You eyeball it | Scores against held-out eval set |
-| **Iterations** | One shot | Hundreds of targeted improvements |
+---
 
-GEPA isn't smarter than a good LLM. It's **systematic** where manual iteration is not.
+## Glossary: paper speak → plain English
+
+| Paper term             | What it actually means                                               |
+| ---------------------- | -------------------------------------------------------------------- |
+| **Candidate**          | A version of your prompt                                             |
+| **Mutation**           | A rewrite of the prompt based on failure analysis                    |
+| **Trainset / Valset**  | Examples to learn from / examples to test generalization             |
+| **Reflection LM**      | The smart model that reads failures and proposes fixes               |
+| **Task LM**            | The model that actually runs your task                               |
+| **Component / Module** | A single text parameter being optimized (usually just: your prompt)  |
+| **Trajectory**         | A record of what happened when a prompt ran: input, output, feedback |
+| **ASI**                | Actionable Side Information — the _why_ behind a failure             |
+| **Candidate Pool**     | The collection of all prompt versions being maintained               |
+| **Minibatch**          | Small subset of training examples used per iteration                 |
+| **Rollout**            | Running the prompt on an example and recording input/output/feedback |
+
+---
+
+## What a single mutation looks like
+
+One iteration, step by step:
+
+1. **Pick** a prompt from the Pareto frontier
+2. **Sample** 3 examples from the training set (the "minibatch")
+3. **Run** the prompt on those 3 examples using the task model
+4. **Collect** what went in, what came out, what your evaluator said about it
+5. **Send** all of that to the reflection LM: _"here's the prompt, here's what it got wrong — write a better one"_
+6. **Run** the new prompt on the same 3 examples — did it improve?
+7. **If yes**: run it on the full validation set, update the Pareto scores, add it to the pool
+8. **If no**: discard it, go back to step 1
+
+Total LLM calls per iteration: a handful on the task model + **one call** to the reflection LM.
 
 ---
 
@@ -120,36 +149,20 @@ You might run 500 evaluations during optimization. You don't want to pay frontie
 
 ## What the Pareto frontier is
 
-As GEPA runs, it accumulates multiple candidate prompts. Each has been tested on your validation examples.
+Named after Vilfredo Pareto, an economist who studied trade-offs.
 
-The **Pareto frontier** = keep any prompt that is the best at *something*.
+**Pareto optimal** = you can't improve one thing without making another thing worse.
 
-| | Ex 1 | Ex 2 | Ex 3 | Ex 4 |
-|---|---|---|---|---|
-| Prompt A | ✓ | ✓ | ✗ | ✗ |
-| Prompt B | ✗ | ✗ | ✓ | ✓ |
+**Frontier** = the set of prompts where that's true. Don't throw away a prompt just because its average is lower — it might be the only one that solves a specific example.
 
-Neither dominates the other — Prompt A is the best at examples 1 & 2, Prompt B at 3 & 4. Both survive.
+|          | Ex 1 | Ex 2 | Ex 3 | Ex 4 |
+| -------- | ---- | ---- | ---- | ---- |
+| Prompt A | ✓    | ✓    | ✗    | ✗    |
+| Prompt B | ✗    | ✗    | ✓    | ✓    |
 
-GEPA picks from the frontier each iteration, so it can learn from Prompt A's failures on Ex 3 — something it would never see if it only ever mutated the highest-average prompt.
+Prompt B has the same average as A, but it's the only one that gets Ex 3 and 4 right. Killing it would lose that knowledge.
 
----
-
-## How GEPA runs, step by step
-
-```mermaid
-flowchart LR
-    A[Pick prompt\nfrom frontier] --> B[Run on\nminibatch]
-    B --> C[Collect traces:\ninput, output, feedback]
-    C --> D[Reflection LM\nreads failures]
-    D --> E[Propose\nimproved prompt]
-    E --> F{Better on\nval set?}
-    F -- Yes --> G[Add to\nfrontier]
-    F -- No --> A
-    G --> A
-```
-
-Each iteration: one minibatch evaluation + one reflection call + one validation check.
+GEPA keeps both alive. Each iteration it picks one from the frontier, finds where it fails, and tries to fix that — without losing what it's already good at.
 
 ---
 
@@ -173,24 +186,7 @@ The reflection LM **never sees these**. So a score improvement here is a real si
 
 ---
 
-## What a single mutation looks like
-
-One iteration, step by step:
-
-1. **Pick** a prompt from the Pareto frontier
-2. **Sample** 3 examples from the training set (the "minibatch")
-3. **Run** the prompt on those 3 examples using the task model
-4. **Collect** what went in, what came out, what your evaluator said about it
-5. **Send** all of that to the reflection LM: *"here's the prompt, here's what it got wrong — write a better one"*
-6. **Run** the new prompt on the same 3 examples — did it improve?
-7. **If yes**: run it on the full validation set, update the Pareto scores, add it to the pool
-8. **If no**: discard it, go back to step 1
-
-Total LLM calls per iteration: a handful on the task model + **one call** to the reflection LM.
-
----
-
-## Why only 3 examples at a time?
+## Why only 3 examples at a time? ("minibatch")
 
 Showing all your training data to the reflection LM at once would be:
 
@@ -198,33 +194,9 @@ Showing all your training data to the reflection LM at once would be:
 - **Too noisy** — 50 failure examples at once makes it hard to identify a specific pattern to fix
 - **Wasteful** — you'd burn the same examples every iteration
 
-With a small minibatch, the reflection LM gets a focused signal: *"this prompt fails on sarcastic complaints."* It fixes that. Next iteration, different examples surface a different failure. Over many iterations, all the failure modes get addressed.
+With a small minibatch, the reflection LM gets a focused signal: _"this prompt fails on sarcastic complaints."_ It fixes that. Next iteration, different examples surface a different failure. Over many iterations, all the failure modes get addressed.
 
 The Pareto frontier is what makes sure no partial improvement gets thrown away between iterations.
-
----
-
-## Mutation is directed, not random
-
-This is the key difference from older "evolutionary" approaches:
-
-<div class="columns">
-
-**Genetic algorithm**
-Randomly scramble parts of the prompt.
-Hope something better emerges.
-Needs thousands of attempts.
-
-**GEPA**
-Read exactly what failed and why.
-Propose a targeted fix for that specific failure.
-Converges in 100–500 attempts.
-
-</div>
-
-The word "mutation" comes from the evolutionary analogy, but it's misleading. It's less *random mutation* and more *a senior colleague reading your work and suggesting specific improvements.*
-
-The reflection LM is that colleague. Your evaluator's feedback is the code review.
 
 ---
 
@@ -232,9 +204,9 @@ The reflection LM is that colleague. Your evaluator's feedback is the code revie
 
 ```
 Here are the instructions I gave an assistant:
----
+- - -
 Classify the text as 'complaint' or 'not_complaint'.
----
+- - -
 
 Here is how it performed on some examples:
 
@@ -259,48 +231,52 @@ The reflection LM reads the actual failures — not a description of them.
 
 Just a better prompt. Drop-in replacement. No code changes.
 
-**Before GEPA:**
-> Classify the text as 'complaint' or 'not_complaint'. Reply with only one of those two labels.
+![w:700](assets/example-prompt.png)
 
-**After GEPA (example):**
-> Classify the following customer message as either 'complaint' or 'not_complaint'.
-> A complaint expresses dissatisfaction, requests remediation, or indicates something went wrong — including sarcasm and indirect frustration.
-> A non-complaint includes praise, neutral queries, or positive experiences even if imperfect.
-> Reply with exactly one label: complaint or not_complaint. No punctuation, no explanation.
+<!-- ---
 
-Same format. More precise. Works better on the cases the seed prompt missed.
+## What the paper actually tested on
+
+| Benchmark    | Task                                   | What one example looks like                                                                                                 |
+| ------------ | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **HotpotQA** | Multi-hop question answering           | Q: "Which magazine was started first, Arthur's Magazine or First for Women?" → A: "Arthur's Magazine"                       |
+| **HoVer**    | Multi-hop claim verification           | Claim: "The director of Jaws also directed a film about an alien stranded on Earth" → SUPPORTED                             |
+| **IFBench**  | Instruction following with constraints | "Write a paragraph about dogs. Use exactly two sentences. Mention 'loyal' at least 3 times." → text obeying all constraints |
+| **PUPA**     | Privacy-preserving query delegation    | User asks a question containing PII → system must answer accurately without leaking PII to untrusted models                 |
+
+All four require the model to follow precise instructions — which is exactly where prompt wording matters most.
 
 ---
 
 ## Real results from the paper
 
-| Task | Before | After | Budget |
-|---|---|---|---|
-| AIME 2025 math | 46.6% | 56.6% | ~150 evals |
-| ARC-AGI agent | 32% | 89% | — |
-| HotpotQA vs GRPO | baseline | +20% | 35x fewer rollouts |
-| Cloud scheduling cost | baseline | −40.2% | — |
-| Coding agent (Jinja) | 55% | 82% | — |
+| Task                  | Before   | After  | Budget             |
+| --------------------- | -------- | ------ | ------------------ |
+| AIME 2025 math        | 46.6%    | 56.6%  | ~150 evals         |
+| ARC-AGI agent         | 32%      | 89%    | —                  |
+| HotpotQA vs GRPO      | baseline | +20%   | 35x fewer rollouts |
+| Cloud scheduling cost | baseline | −40.2% | —                  |
+| Coding agent (Jinja)  | 55%      | 82%    | —                  |
 
 These are **prompt-only changes.** Model weights untouched.
 
----
+--- -->
 
-## GEPA vs reinforcement learning (GRPO)
+<!-- ## GEPA vs reinforcement learning (GRPO)
 
 Both try to improve model behavior. Very different approaches.
 
-| | GRPO | GEPA |
-|---|---|---|
-| **Changes** | Model weights | Prompt text |
-| **Evaluations needed** | 5,000 – 25,000+ | 100 – 500 |
-| **Needs model weights** | Yes | No (API models work) |
-| **Minimum data** | Large dataset | As few as 3 examples |
-| **Output** | New model | Better prompt |
+|                         | GRPO            | GEPA                 |
+| ----------------------- | --------------- | -------------------- |
+| **Changes**             | Model weights   | Prompt text          |
+| **Evaluations needed**  | 5,000 – 25,000+ | 100 – 500            |
+| **Needs model weights** | Yes             | No (API models work) |
+| **Minimum data**        | Large dataset   | As few as 3 examples |
+| **Output**              | New model       | Better prompt        |
 
 They're **complementary** — the GEPA paper recommends running GEPA first for fast gains, then fine-tuning on top.
 
----
+--- -->
 
 ## When GEPA won't help
 
